@@ -1,0 +1,32 @@
+<testsuites id="" name="" tests="14" failures="0" skipped="0" errors="0" time="19.189638000000002">
+<testsuite name="example.spec.js" timestamp="2026-11-19T13:41:54.933Z" hostname="chromium" tests="14" failures="0" skipped="0" time="12.338" errors="0">
+<testcase name="home page has Turkish content and a clear shopping action" classname="example.spec.js" time="1.158">
+</testcase>
+<testcase name="category filters show only matching products" classname="example.spec.js" time="0.756">
+</testcase>
+<testcase name="cart updates quantities and totals, then supports removal" classname="example.spec.js" time="0.844">
+</testcase>
+<testcase name="Elektronik filter and reset show the correct products" classname="example.spec.js" time="1.016">
+</testcase>
+<testcase name="Aksesuar filter and reset show the correct products" classname="example.spec.js" time="0.912">
+</testcase>
+<testcase name="Yaşam filter and reset show the correct products" classname="example.spec.js" time="0.757">
+</testcase>
+<testcase name="empty cart provides a working way back to shopping" classname="example.spec.js" time="0.627">
+</testcase>
+<testcase name="mixed cart recalculates its total and count after removing one product" classname="example.spec.js" time="0.89">
+</testcase>
+<testcase name="checkout displays the demo order confirmation" classname="example.spec.js" time="0.649">
+</testcase>
+<testcase name="shopping works with the keyboard and announces cart changes" classname="example.spec.js" time="1.133">
+</testcase>
+<testcase name="home, products and populated cart fit a 320px viewport" classname="example.spec.js" time="0.867">
+</testcase>
+<testcase name="home, products and populated cart fit a 375px viewport" classname="example.spec.js" time="0.841">
+</testcase>
+<testcase name="home, products and populated cart fit a 768px viewport" classname="example.spec.js" time="0.951">
+</testcase>
+<testcase name="home, products and populated cart fit a 1280px viewport" classname="example.spec.js" time="0.937">
+</testcase>
+</testsuite>
+</testsuites>

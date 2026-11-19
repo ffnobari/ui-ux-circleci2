@@ -1,0 +1,161 @@
+version: 2.1
+
+parameters:
+  run_deploy:
+    type: boolean
+    default: false
+
+jobs:
+  # 1. Ortak Test ve Kalite Kontrol Job'ı (Tüm branch'lerde çalışır)
+  build-and-test:
+    docker:
+      - image: cimg/node:22.12.0
+    steps:
+      - checkout
+
+      # --- 1. INSTALL DEPENDENCIES ---
+      - run:
+          name: Notify Slack - Install Started
+          command: |
+            curl -s -X POST --data-urlencode 'payload={"text": "⏳ *Test ve Kalite Kontrol* adımı başladı..."}' ${SLACK_WEBHOOK_URL} || true
+      - run:
+          name: Install dependencies
+          command: yarn install --frozen-lockfile --non-interactive
+
+      - run:
+          name: Install Chromium for Playwright
+          command: npx playwright install --with-deps chromium
+
+      # --- 2. RUN ESLINT ---
+      - run:
+          name: Run ESLint
+          command: yarn lint
+
+      # --- 3. CHECK TRANSLATION METADATA ---
+      - run:
+          name: Check translation metadata
+          command: yarn lint:translations
+
+      # --- 4. BUILD AND RUN UI/UX TESTS ---
+      - run:
+          name: Build React app
+          command: yarn build
+
+      - run:
+          name: Run Playwright UI/UX tests
+          command: yarn test:e2e
+
+      - store_artifacts:
+          path: playwright-report
+          destination: playwright-report
+
+      - store_artifacts:
+          path: test-results
+          destination: test-results
+
+      - store_test_results:
+          path: test-results
+
+      # --- BAŞARI / HATA BİLDİRİMLERİ ---
+      - run:
+          name: Notify Slack - Success
+          command: |
+            curl -s -X POST --data-urlencode 'payload={"text": "🟢 *SUCCESS:* Test ve kalite kontrol adımları başarıyla tamamlandı!"}' ${SLACK_WEBHOOK_URL} || true
+
+      - run:
+          name: Notify Slack - Failure
+          when: on_fail
+          command: |
+            curl -s -X POST --data-urlencode 'payload={"text": "🔴 *FAIL:* Test aşamasında bir hata oluştu!"}' ${SLACK_WEBHOOK_URL} || true
+
+
+  # 2. Sadece Main Branch için Versiyon Güncelleme, Build, Deploy ve Release Job'ı
+  deploy:
+    docker:
+      - image: cimg/node:22.12.0
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: yarn install --frozen-lockfile
+
+      - run:
+          name: Notify Slack - Deployment Started
+          command: |
+            curl -s -X POST --data-urlencode 'payload={"text": "⏳ *Deployment ve Release* adımı başladı..."}' ${SLACK_WEBHOOK_URL} || true
+
+      # --- 1. VERSİYONU ÖNCEDEN ARTIR (Build'in yeni versiyonu içermesi için) ---
+      - run:
+          name: Increment Version Locally
+          command: |
+            git config user.email "ci@circleci.com"
+            git config user.name "CircleCI Bot"
+            # package.json'ı yerelde artırır ve versiyon numarasını değişkene atar
+            NEW_VERSION=$(npm version patch --no-git-tag-version)
+            echo "Yeni Versiyon: $NEW_VERSION"
+            echo "export NEW_VERSION=$NEW_VERSION" >> $BASH_ENV
+
+      # --- 2. GÜNCEL VERSİYONLA BUILD AL ---
+      - run:
+          name: Build React app with Updated Version
+          command: yarn build
+
+      # --- 3. CLOUDFLARE'E DEPLOY ET (Canlıya doğru ve güncel versiyon gider) ---
+      - run:
+          name: Deploy to Cloudflare Pages
+          command: npx wrangler@3 pages deploy build --project-name="cicd"
+          environment:
+            CLOUDFLARE_ACCOUNT_ID: "0fc89caf2d508bfbdefff4a3496b0254"
+
+      # --- 4. HER ŞEY BAŞARILIYSA GİT COMMIT, TAG VE GITHUB RELEASE OLUŞTUR ---
+      - run:
+          name: Commit Version, Push Tag and Create GitHub Release
+          command: |
+            git config user.email "ci@circleci.com"
+            git config user.name "CircleCI Bot"
+            
+            # Ortam değişkeninden repo bilgisini alarak URL'yi dinamik oluşturur
+            GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-${CIRCLE_PROJECT_USERNAME}/${CIRCLE_PROJECT_REPONAME}}"
+            git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+            
+            git add package.json
+            git commit -m "chore(release): $NEW_VERSION [skip ci]"
+            git tag "$NEW_VERSION"
+            git push origin main --tags
+
+            # GitHub API kullanarak cURL ile otomatik Release oluşturma
+            curl -X POST \
+              -H "Authorization: token ${GITHUB_TOKEN}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              https://api.github.com/repos/${GITHUB_REPOSITORY}/releases \
+              -d "{\"tag_name\":\"${NEW_VERSION}\",\"name\":\"Release ${NEW_VERSION}\",\"body\":\"Otomatik Cloudflare Pages deployment release.\"}"
+      
+      # --- GENEL BAŞARI BİLDİRİMİ ---
+      - run:
+          name: Notify Slack - Success
+          command: |
+            curl -s -X POST --data-urlencode 'payload={"text": "🟢 *SUCCESS:* Main branch deployment tamamlandı, güncel versiyon canlıya alındı, GitHub Release oluşturuldu!"}' ${SLACK_WEBHOOK_URL} || true
+
+      # --- GENEL HATA BİLDİRİMİ ---
+      - run:
+          name: Notify Slack - Failure
+          when: on_fail
+          command: |
+            curl -s -X POST --data-urlencode 'payload={"text": "🔴 *FAIL:* Deployment veya Release aşamasında bir hata oluştu!"}' ${SLACK_WEBHOOK_URL} || true
+
+
+workflows:
+  version: 2
+  ui-ux-tests:
+    jobs:
+      - build-and-test
+  deployment-workflow:
+    when: << pipeline.parameters.run_deploy >>
+    jobs:
+      - build-and-test
+      - deploy:
+          requires:
+            - build-and-test
+          filters:
+            branches:
+              only: main
